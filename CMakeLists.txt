@@ -4,8 +4,9 @@ project(orb_formation)
 ## Compile as C++11, supported in ROS Kinetic and newer
 add_compile_options(-std=c++11)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -Wall  -O3 -march=native ")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall  -O3 -march=native")
+set(CMAKE_BUILD_TYPE "Debug")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -Wno-deprecated-declarations  -O3 -march=native ")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations  -O3 -march=native")
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -18,6 +19,7 @@ find_package(catkin REQUIRED COMPONENTS
   message_filters
 )
 find_package(OpenCV REQUIRED COMPONENTS)
+find_package(Eigen3 REQUIRED)
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
@@ -124,16 +126,22 @@ include_directories(
 # include
   ${catkin_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIR}
+  ${PROJECT_SOURCE_DIR}
+  ${PROJECT_SOURCE_DIR}/include
 )
+
+aux_source_directory("./src" DIR_SRCS)
+
 add_library(orb_colocal
-	src/CoLocalSystem.cc
-	src/Frame.cc
-	src/ORBextractor.cc
-	src/Tracking.cc
+  ${DIR_SRCS}
 )
+
 target_link_libraries(orb_colocal
   ${catkin_LIBRARIES}
   ${OpenCV_LIBRARIES}
+  ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
+  ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
 )
 add_executable(orb_formation_node src/main.cc)
 target_link_libraries(orb_formation_node 

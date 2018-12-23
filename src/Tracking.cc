@@ -1,14 +1,275 @@
 #include "Tracking.h"
+
+#include "Optimizer.h"
+
+Tracking::Tracking(const cv::FileStorage& fSettings):mTrackFlag(0)
+{
+    float fx = fSettings["Camera.fx"];
+    float fy = fSettings["Camera.fy"];
+    float cx = fSettings["Camera.cx"];
+    float cy = fSettings["Camera.cy"];
+
+    //     |fx  0   cx|
+    // K = |0   fy  cy|
+    //     |0   0   1 |
+    cv::Mat K = cv::Mat::eye(3, 3, CV_32F);
+    K.at<float>(0, 0) = fx;
+    K.at<float>(1, 1) = fy;
+    K.at<float>(0, 2) = cx;
+    K.at<float>(1, 2) = cy;
+    K.copyTo(mK);
+
+    // 图像矫正系数
+    // [k1 k2 p1 p2 k3]
+    cv::Mat DistCoef(4, 1, CV_32F);
+    DistCoef.at<float>(0) = fSettings["Camera.k1"];
+    DistCoef.at<float>(1) = fSettings["Camera.k2"];
+    DistCoef.at<float>(2) = fSettings["Camera.p1"];
+    DistCoef.at<float>(3) = fSettings["Camera.p2"];
+    DistCoef.copyTo(mDistCoef);
+    mbf = fSettings["Camera.bf"];
+
+    // 每一帧提取的特征点数 1000
+    int nFeatures = fSettings["ORBextractor.nFeatures"];
+    // 图像建立金字塔时的变化尺度 1.2
+    float fScaleFactor = fSettings["ORBextractor.scaleFactor"];
+    // 尺度金字塔的层数 8
+    int nLevels = fSettings["ORBextractor.nLevels"];
+    // 提取fast特征点的默认阈值 20
+    int fIniThFAST = fSettings["ORBextractor.iniThFAST"];
+    // 如果默认阈值提取不出足够fast特征点，则使用最小阈值 8
+    int fMinThFAST = fSettings["ORBextractor.minThFAST"];
+
+    // tracking过程都会用到mpORBextractorLeft作为特征点提取器
+    mpORBextractorLeft = new ORBextractor(nFeatures, fScaleFactor, nLevels, fIniThFAST, fMinThFAST);
+    mpORBextractorRight = new ORBextractor(nFeatures, fScaleFactor, nLevels, fIniThFAST, fMinThFAST);
+
+    mpVocabulary = new ORBVocabulary();
+    bool bVocLoad = false; // chose loading method based on file extension
+    string dictPath = fSettings["DictPath"];
+    bVocLoad = mpVocabulary->loadFromTextFile(dictPath);
+    if(!bVocLoad)
+    {
+        cerr << "Wrong path to vocabulary. " << endl;
+        cerr << "Failed to open at: " << dictPath << endl;
+        exit(-1);
+    }
+    cout << "Vocabulary loaded!" << endl << endl;
+}
+
 cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,const cv::Mat &imRectRight,int id)
 {
-    if(id == 0)//是自己的
+    if(id == 0)//是自己的，也就是参考帧。
     {
-        mlastFrame = Frame(imRectLeft,imRectRight,mpORBextractorLeft,mpORBextractorRight,mK);
+        mLastFrame = Frame(imRectLeft,imRectRight,
+            mpORBextractorLeft,mpORBextractorRight,mK,
+            mpVocabulary,id);
+        mLastFrame.mbFrameValid = true;
+        mTrackFlag|=0x1;
         return cv::Mat();
     }
     else
     {
-        mCurrentFrame = Frame(imRectLeft,imRectRight,mpORBextractorLeft,mpORBextractorRight,mK);
-        return cv::Mat();//此处应返回相对位置
+        // 别人的帧
+        mCurrentFrame = Frame(imRectLeft,imRectRight,
+            mpORBextractorLeft,mpORBextractorRight,mK,
+            mpVocabulary, id);
+        mCurrentFrame.mbFrameValid = true;
+        mTrackFlag|=0x2;
+    }
+
+    if(mTrackFlag==0x3){
+        TrackReferenceKeyFrame();
+        cv::Mat res = mCurrentFrame.mTcw.clone();
+        mTrackFlag=0;
+        mCurrentFrame.mbFrameValid = false;
+        mLastFrame.mbFrameValid = false;
+        return res;//此处应返回相对位置
+    }else if(mTrackFlag!=0){
+        // 这里初始化，因为只有一帧处理好了
+        // 只有mLastFrame被使用
+        StereoInitialization();
+        return cv::Mat();
+    }
+}
+
+bool Tracking::TrackReferenceKeyFrame(){
+
+    cout << "************come into loop! track reference key frame**************" << endl;
+    // 看看描述子是个啥把
+    cout << mCurrentFrame.mDescriptors.rows << ","<< mCurrentFrame.mDescriptors.cols << endl;
+    cout << mLastFrame.mDescriptors.rows << "," << mLastFrame.mDescriptors.cols << endl;
+    // Compute Bag of Words vector
+    // 步骤1：将当前帧的描述子转化为BoW向量
+    if(mCurrentFrame.mbFrameValid)
+        mCurrentFrame.ComputeBoW();
+    else
+        cout << "mCurrentFrame not valid" <<endl;
+    // 这里也应该计算mLastFrame的BoW吧
+    if(mLastFrame.mbFrameValid)
+        mLastFrame.ComputeBoW();
+    else
+        cout << "mLastFrame not valid" <<endl;
+
+    cout << "************come into loop? two frame valid?**************" << endl;
+    // We perform first an ORB matching with the reference keyframe
+    // If enough matches are found we setup a PnP solver
+    ORBmatcher matcher(0.7,true);
+    vector<MapPoint*> vpMapPointMatches;
+
+    // 步骤2：通过特征点的BoW加快当前帧与参考帧之间的特征点匹配
+    // 特征点的匹配关系由MapPoints进行维护
+    // 参数： 第一个是参考帧，第二个是判断的帧
+    // 也就是说，第一个是自己，第二个是别人
+    // 以后，自己叫做
+    cout << "************come into loop? matcher?**************" << endl;
+    int nmatches = matcher.SearchByBoW(&mLastFrame,mCurrentFrame,vpMapPointMatches);
+
+    cout << "************come into loop? search bow?**************" << endl;
+    cout << nmatches << endl;
+    // if(nmatches<15)
+    //    return false;
+
+    // 步骤3:将上一帧的位姿态作为当前帧位姿的初始值
+    mCurrentFrame.mvpMapPoints = vpMapPointMatches;
+    mCurrentFrame.SetPose(mLastFrame.mTcw); // 用上一次的Tcw设置初值，在PoseOptimization可以收敛快一些
+
+    cout << "************come into loop? set pose?**************" << endl;
+    // 步骤4:通过优化3D-2D的重投影误差来获得位姿
+    Optimizer::PoseOptimization(&mCurrentFrame);
+
+    cout << "************come into loop? optimize?**************" << endl;
+    // Discard outliers
+    // 步骤5：剔除优化后的outlier匹配点（MapPoints）
+    int nmatchesMap = 0;
+    cout << "************come into loop**************" << endl;
+    cout << "feature number: "<<mCurrentFrame.N << endl;
+    cout << "mappoint number: "<<mCurrentFrame.mvpMapPoints.size() << endl;
+    cout << "outlier number: "<<mCurrentFrame.mvbOutlier.size() << endl;
+    for(int i =0; i<mCurrentFrame.N; i++)
+    {
+        if(mCurrentFrame.mvpMapPoints[i])
+        {
+            if(mCurrentFrame.mvbOutlier[i])
+            {
+                MapPoint* pMP = mCurrentFrame.mvpMapPoints[i];
+
+                mCurrentFrame.mvpMapPoints[i]=static_cast<MapPoint*>(NULL);
+                mCurrentFrame.mvbOutlier[i]=false;
+                // pMP->mbTrackInView = false;
+                // pMP->mnLastFrameSeen = mCurrentFrame.mnId;
+                nmatches--;
+            }
+            else if(mCurrentFrame.mvpMapPoints[i]->nObs>0)
+                nmatchesMap++;
+        }
+    }
+    cout << "**************TrackReferenceKeyFrame********************" << endl;
+    cout << nmatchesMap << endl;
+    traceMap(&mCurrentFrame);
+    cout << "***********TrackReferenceKeyFrame end*******************" << endl;
+    return nmatchesMap>=10;
+}
+
+void Tracking::traceMap(Frame* frame){
+    for(auto it = frame->mvpMapPoints.begin();
+        it!=frame->mvpMapPoints.end();it++){
+        cout << (*it)->mWorldPos << endl;
+    }
+}
+/**
+ * @brief 双目和rgbd的地图初始化
+ *
+ * 由于具有深度信息，直接生成MapPoints
+ */
+void Tracking::StereoInitialization()
+{
+    if(mLastFrame.N>500)
+    {
+        // Set Frame pose to the origin
+        // 步骤1：设定初始位姿
+        mLastFrame.SetPose(cv::Mat::eye(4,4,CV_32F));
+
+        // Create KeyFrame
+        // 步骤2：将当前帧构造为初始关键帧
+        // mCurrentFrame的数据类型为Frame
+        // KeyFrame包含Frame、地图3D点、以及BoW
+        // KeyFrame里有一个mpMap，Tracking里有一个mpMap，而KeyFrame里的mpMap都指向Tracking里的这个mpMap
+        // KeyFrame里有一个mpKeyFrameDB，Tracking里有一个mpKeyFrameDB，而KeyFrame里的mpMap都指向Tracking里的这个mpKeyFrameDB
+
+        // 问题：需要不需要Map和KeyFrameMap？
+        // 特征点的三维空间坐标需要Map的
+        // 但是关键帧的Map应该不需要把，就两帧。
+        // 所以下面的替换成：
+        // KeyFrame* pKFini = new KeyFrame(mCurrentFrame,mpMap,mpKeyFrameDB);
+        mLastFrame.mpMap = mpMap;
+
+        // Insert KeyFrame in the map
+        // KeyFrame中包含了地图、反过来地图中也包含了KeyFrame，相互包含
+        // 步骤3：在地图中添加该初始关键帧
+        mpMap->AddFrame(&mLastFrame);
+
+        // Create MapPoints and asscoiate to KeyFrame
+        // 步骤4：为每个特征点构造MapPoint
+        for(int i=0; i<mLastFrame.N;i++)
+        {
+            float z = mLastFrame.mvDepth[i];
+            if(z>0)
+            {
+                // 步骤4.1：通过反投影得到该特征点的3D坐标
+                cv::Mat x3D = mLastFrame.UnprojectStereo(i);
+                // 步骤4.2：将3D点构造为MapPoint
+                MapPoint* pNewMP = new MapPoint(x3D,mpMap,&mLastFrame,mLastFrame.mnId);
+
+                // 步骤4.3：为该MapPoint添加属性：
+                // a.观测到该MapPoint的关键帧
+                // b.该MapPoint的描述子
+                // c.该MapPoint的平均观测方向和深度范围
+
+                // a.表示该MapPoint可以被哪个KeyFrame的哪个特征点观测到
+                // NOTE 这个暂时去掉吧啊哈
+                pNewMP->AddObservation( &mLastFrame ,i);
+                // b.从众多观测到该MapPoint的特征点中挑选区分读最高的描述子
+                // NOTE 最后也就是更新mDescriptor，因为只有一帧图像，所以删了很多东西
+                pNewMP->ComputeDistinctiveDescriptors();
+                // c.更新该MapPoint平均观测方向以及观测距离的范围
+                // 参考关键帧就是自己，这个方法不知道之后要不要改
+                pNewMP->UpdateNormalAndDepth();
+
+                // 步骤4.4：在地图中添加该MapPoint
+                mpMap->AddMapPoint(pNewMP);
+                // 步骤4.5：表示该KeyFrame的哪个特征点可以观测到哪个3D点
+                mLastFrame.AddMapPoint(pNewMP,i);
+
+                // 步骤4.6：将该MapPoint添加到当前帧的mvpMapPoints中
+                // 为当前Frame的特征点与MapPoint之间建立索引
+                mLastFrame.mvpMapPoints[i]=pNewMP;
+            }
+        }
+
+        cout << "New map created with " << mpMap->mspMapPoints.size() << " points" << endl;
+
+        // 步骤4：在局部地图中添加该初始关键帧
+        // mpLocalMapper->InsertKeyFrame(pKFini);
+
+        // mLastFrame = Frame(mCurrentFrame);
+        // mnLastKeyFrameId=mCurrentFrame.mnId;
+        // mpLastKeyFrame = pKFini;
+
+        // mvpLocalKeyFrames.push_back(pKFini);
+        // mvpLocalMapPoints=mpMap->GetAllMapPoints();
+        // mpReferenceKF = mLastFrame;
+        // mCurrentFrame.mpReferenceKF = pKFini;
+
+        // 把当前（最新的）局部MapPoints作为ReferenceMapPoints
+        // ReferenceMapPoints是DrawMapPoints函数画图的时候用的
+        // mpMap->SetReferenceMapPoints(mvpLocalMapPoints);
+
+        // mpMap->mvpKeyFrameOrigins.push_back(pKFini);
+
+        // mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
+
+        // mState=OK;
+
     }
 }

@@ -114,3 +114,4 @@ Viewer.ViewpointY: -0.7
 Viewer.ViewpointZ: -1.8
 Viewer.ViewpointF: 500
 
+DictPath: "/home/zbf/catkin_ws/src/UavCoLocation/Vocabulary/ORBvoc.txt"

@@ -1,28 +1,5 @@
-#include <iostream>
-#include <string>
 
-#include <opencv2/core/core.hpp>
-#include <opencv2/features2d/features2d.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
-#include <opencv2/highgui/highgui.hpp>
-
-#include <ros/ros.h>
-#include <cv_bridge/cv_bridge.h>
-#include <message_filters/subscriber.h>
-#include <message_filters/time_synchronizer.h>
-#include <message_filters/sync_policies/approximate_time.h>
-
-#include "CoLocalSystem.h"
-class ImageGrabber
-{
-  public:
-    ImageGrabber(CoLocalSystem *coLocal) : mcoLocal(coLocal) {}
-    void OpencvStereo(cv::Mat &Left, cv::Mat &Right);          //自己的
-    cv::Mat OpencvStereo_Other(cv::Mat &Left, cv::Mat &Right); //第二架的
-    void RosStereo(const sensor_msgs::ImageConstPtr &msgLeft, const sensor_msgs::ImageConstPtr &msgRight);
-    CoLocalSystem *mcoLocal;
-    cv::Mat M1l, M2l, M1r, M2r;
-};
+#include "ImageGrabber.h"
 
 int main(int argc, char **argv)
 {
@@ -44,7 +21,7 @@ int main(int argc, char **argv)
     }
     CoLocalSystem coLocal(fsSettings);
     ImageGrabber igb(&coLocal);
-
+    
     // Load settings related to stereo calibration
     {
         cv::Mat K_l, K_r, P_l, P_r, R_l, R_r, D_l, D_r;
@@ -85,57 +62,26 @@ int main(int argc, char **argv)
     }
     else
     {
-        cv::Mat left0(cv::imread(pic_path+"left1.jpg", 0));
-        cv::Mat right0(cv::imread(pic_path+"right1.jpg", 0));
-        cout<<pic_path<<endl;
+        // 读第一个飞机
+        cv::Mat left0(cv::imread(pic_path+"left0.jpg", 0));
+        cv::Mat right0(cv::imread(pic_path+"right0.jpg", 0));
+        cout << pic_path << endl;
         igb.OpencvStereo(left0,right0);
+        // 读第二个飞机的图像
+        cv::Mat left1(cv::imread(pic_path+"left1.jpg", 0));
+        cv::Mat right1(cv::imread(pic_path+"right1.jpg", 0));
+        cout<<pic_path<<endl;
+        igb.OpencvStereo_Other(left1,right1);
     }
+
+
+    // 这两个完了之后才能做匹配吧
+    // 匹配是靠Track这个函数来做的吧
+    Tracking* tracker = coLocal.GetTracker();
 
     while(1)
     {
 
     }
     return 0;
-}
-void ImageGrabber::RosStereo(const sensor_msgs::ImageConstPtr &msgLeft, const sensor_msgs::ImageConstPtr &msgRight)
-{
-    // Copy the ros image message to cv::Mat.
-    cv_bridge::CvImageConstPtr cv_ptrLeft;
-    try
-    {
-        cv_ptrLeft = cv_bridge::toCvShare(msgLeft);
-    }
-    catch (cv_bridge::Exception &e)
-    {
-        ROS_ERROR("cv_bridge exception: %s", e.what());
-        return;
-    }
-
-    cv_bridge::CvImageConstPtr cv_ptrRight;
-    try
-    {
-        cv_ptrRight = cv_bridge::toCvShare(msgRight);
-    }
-    catch (cv_bridge::Exception &e)
-    {
-        ROS_ERROR("cv_bridge exception: %s", e.what());
-        return;
-    }
-    cv::Mat imLeft, imRight;
-    cv::remap(cv_ptrLeft->image, imLeft, M1l, M2l, cv::INTER_LINEAR);
-    cv::remap(cv_ptrRight->image, imRight, M1r, M2r, cv::INTER_LINEAR);
-}
-
-void ImageGrabber::OpencvStereo(cv::Mat &Left, cv::Mat &Right)
-{
-    //cv::remap(Left, Left, M1l, M2l, cv::INTER_LINEAR);
-    //cv::remap(Right, Right, M1r, M2r, cv::INTER_LINEAR);
-    mcoLocal->TrackStereo(Left,Right,0);
-}
-cv::Mat ImageGrabber::OpencvStereo_Other(cv::Mat &Left, cv::Mat &Right)
-{
-    cv::remap(Left, Left, M1l, M2l, cv::INTER_LINEAR);
-    cv::remap(Right, Right, M1r, M2r, cv::INTER_LINEAR);
-    mcoLocal->TrackStereo(Left,Right,1);
-    return cv::Mat();
 }
