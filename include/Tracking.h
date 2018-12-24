@@ -28,6 +28,7 @@ class Tracking
     Frame mCurrentFrame;
     Frame mLastFrame;
     int mTrackFlag;
+    float mThDepth;
     Map* mpMap;
 
     ORBVocabulary* mpVocabulary;

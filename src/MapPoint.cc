@@ -39,6 +39,7 @@ MapPoint::MapPoint(const cv::Mat &Pos, Map* pMap, Frame* pFrame, const int &idxF
 
     // MapPoints can be created from Tracking and Local Mapping. This mutex avoid conflicts with id.
     mnId=nNextId++;
+    mpRefKF = pFrame;
 }
 
 /**
@@ -103,8 +104,8 @@ void MapPoint::UpdateNormalAndDepth()
     {
         // unique_lock<mutex> lock1(mMutexFeatures);
         // unique_lock<mutex> lock2(mMutexPos);
-        if(mbBad)
-            return;
+        // if(mbBad)
+        //     return;
 
         observations=mObservations; // 获得观测到该3d点的所有关键帧
         pKF = mpRefKF;                // 观测到该点的参考关键帧

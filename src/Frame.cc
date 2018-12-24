@@ -6,13 +6,17 @@
 float Frame::cx, Frame::cy;
 float Frame::fx, Frame::fy;
 float Frame::invfx, Frame::invfy;
+bool Frame::mbInitialComputations=true;
+float Frame::mnMinX, Frame::mnMaxX, Frame::mnMinY, Frame::mnMaxY;    
+float Frame::mfGridElementWidthInv, Frame::mfGridElementHeightInv;
 
 Frame::Frame(const cv::Mat &imLeft,
  const cv::Mat &imRight, 
  ORBextractor *extractorLeft,
-  ORBextractor *extractorRight, cv::Mat &K, ORBVocabulary* voc, int craft_id) :
+  ORBextractor *extractorRight, cv::Mat &K, cv::Mat &dist, ORBVocabulary* voc,float baseline, int craft_id) :
    mpORBextractorLeft(extractorLeft), mpORBextractorRight(extractorRight),
-   mCraftID(craft_id),mbFrameValid(false), mpORBvocabulary(voc)
+   mCraftID(craft_id),mbFrameValid(false), mpORBvocabulary(voc),
+   mbf(baseline),mK(K.clone()),mDistCoef(dist.clone())
 {
     mnScaleLevels = mpORBextractorLeft->GetLevels();
     mfScaleFactor = mpORBextractorLeft->GetScaleFactor();
@@ -26,6 +30,8 @@ Frame::Frame(const cv::Mat &imLeft,
     thread threadRight(&Frame::ExtractORB, this, 1, imRight);
     threadLeft.join();
     threadRight.join();
+
+
     //debug
     if(0){
         cv::Mat img, imgRight;
@@ -49,16 +55,40 @@ Frame::Frame(const cv::Mat &imLeft,
         return;
 
     // UndistortKeyPoints();
-    // mvKeysUn=mvKeys;
+    mvKeysUn=mvKeys;
 
-    ComputeStereoMatches();
     
     mvuRight = vector<float>(N, -1);
     mvDepth = vector<float>(N, -1);
 
     mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));
     mvbOutlier = vector<bool>(N, false);
+
+    // This is done only for the first Frame (or after a change in the calibration)
+    if(mbInitialComputations)
+    {
+        ComputeImageBounds(imLeft);
+
+        mfGridElementWidthInv=static_cast<float>(FRAME_GRID_COLS)/static_cast<float>(mnMaxX-mnMinX);
+        mfGridElementHeightInv=static_cast<float>(FRAME_GRID_ROWS)/static_cast<float>(mnMaxY-mnMinY);
+
+        fx = K.at<float>(0,0);
+        fy = K.at<float>(1,1);
+        cx = K.at<float>(0,2);
+        cy = K.at<float>(1,2);
+        invfx = 1.0f/fx;
+        invfy = 1.0f/fy;
+
+        mbInitialComputations=false;
+    }
+
+    mb = mbf/fx;
+
+    AssignFeaturesToGrid();
+
+    ComputeStereoMatches();
 }
+
 void Frame::ExtractORB(int flag, const cv::Mat &im)
 {
     if (flag == 0)
@@ -77,7 +107,7 @@ void Frame::ExtractORB(int flag, const cv::Mat &im)
  */
 void Frame::ComputeStereoMatches()
 {
-    cout << "******************here come in?************************" << endl;
+    // cout << "******************here come in?************************" << endl;
     mvuRight = vector<float>(N,-1.0f);
     mvDepth = vector<float>(N,-1.0f);
 
@@ -92,10 +122,11 @@ void Frame::ComputeStereoMatches()
     // 简单来说，如果纵坐标是20，特征点在图像第20行，那么认为18 19 20 21 22行都有这个特征点
     // vRowIndices[18]、vRowIndices[19]、vRowIndices[20]、vRowIndices[21]、vRowIndices[22]都有这个特征点编号
     vector<vector<size_t> > vRowIndices(nRows,vector<size_t>());
-
+    // cout << "Frame.cc vRowIndices size: " << vRowIndices.size() << endl;
     for(int i=0; i<nRows; i++)
         vRowIndices[i].reserve(200);
 
+    // cout << "Frame.cc vRowIndices item size: " << vRowIndices[0].size() << endl;
     const int Nr = mvKeysRight.size();
 
     for(int iR=0; iR<Nr; iR++)
@@ -114,10 +145,17 @@ void Frame::ComputeStereoMatches()
             vRowIndices[yi].push_back(iR);
     }
 
+    // for(int ii=0;ii<vRowIndices.size();ii++){
+    //     cout << vRowIndices[ii].size() << ",";
+    // }
+    // cout << endl;
+
+
     // Set limits for search
-    const float minZ = mb;        // NOTE bug mb没有初始化，mb的赋值在构造函数中放在ComputeStereoMatches函数的后面
+    const float minZ = mbf/fx;        // NOTE bug mb没有初始化，mb的赋值在构造函数中放在ComputeStereoMatches函数的后面
     const float minD = 0;        // 最小视差, 设置为0即可
-    const float maxD = mbf/minZ;  // 最大视差, 对应最小深度 mbf/minZ = mbf/mb = mbf/(mbf/fx) = fx (wubo???)
+    // const float maxD = mbf/minZ;  // 最大视差, 对应最小深度 mbf/minZ = mbf/mb = mbf/(mbf/fx) = fx (wubo???)
+    const float maxD = 600;  // 最大视差, 对应最小深度 mbf/minZ = mbf/mb = mbf/(mbf/fx) = fx (wubo???)
 
     // For each left keypoint search a match in the right image
     vector<pair<int, int> > vDistIdx;
@@ -133,6 +171,7 @@ void Frame::ComputeStereoMatches()
         const int &levelL = kpL.octave;
         const float &vL = kpL.pt.y;
         const float &uL = kpL.pt.x;
+        // 到点的坐标都没啥问题
 
         // 可能的匹配点
         const vector<size_t> &vCandidates = vRowIndices[vL];
@@ -146,6 +185,8 @@ void Frame::ComputeStereoMatches()
         if(maxU<0)
             continue;
 
+        // maxU也能找到
+        
         int bestDist = ORBmatcher::TH_HIGH;
         size_t bestIdxR = 0;
 
@@ -163,8 +204,10 @@ void Frame::ComputeStereoMatches()
             if(kpR.octave<levelL-1 || kpR.octave>levelL+1)
                 continue;
 
+            // ANCHOR 这儿通,kpR都是对的
             const float &uR = kpR.pt.x;
-
+            
+            // cout << "kpR.pt.x: "<< kpR.pt.x << " kpR.pt.y: "<< kpR.pt.y << endl;
             if(uR>=minU && uR<=maxU)
             {
                 const cv::Mat &dR = mDescriptorsRight.row(iR);
@@ -178,6 +221,9 @@ void Frame::ComputeStereoMatches()
             }
         }
         // 最好的匹配的匹配误差存在bestDist，匹配点位置存在bestIdxR中
+        // 这里不对,bestDist 和bestIDxR啥的
+        // 通过改这个范围，这个有值了
+        // cout << "bestDist: " <<bestDist<<"bestIDxR: "<<bestIdxR<< endl;
 
         // Subpixel match by correlation
         // 步骤2.2：通过SAD匹配提高像素匹配修正量bestincR
@@ -284,7 +330,7 @@ void Frame::ComputeStereoMatches()
             mvDepth[vDistIdx[i].second]=-1;
         }
     }
-    trace(mvuRight);
+    // trace(mvDepth);
 }
 
 
@@ -317,7 +363,7 @@ cv::Mat Frame::UnprojectStereo(int i)
         // 由相机坐标系转换到世界坐标系
         // Twc为相机坐标系到世界坐标系的变换矩阵
         // Twc.rosRange(0,3).colRange(0,3)取Twc矩阵的前3行与前3列
-        return Twc.rowRange(0,3).colRange(0,3)*x3Dc+Twc.rowRange(0,3).col(3);
+        return mTcw.rowRange(0,3).colRange(0,3)*x3Dc+mTcw.rowRange(0,3).col(3);
     }
     else
         return cv::Mat();
@@ -351,7 +397,10 @@ void Frame::ComputeBoW()
     if(mBowVec.empty())
     {
         vector<cv::Mat> vCurrentDesc = Converter::toDescriptorVector(mDescriptors);
+        // cout << "vCurrentDesc size: "<< vCurrentDesc.size() << endl;
         mpORBvocabulary->transform(vCurrentDesc,mBowVec,mFeatVec,4);
+        // cout << "mBowVec size: "<<mBowVec.size() << endl;
+        // cout << "mFeatVec size: "<<mFeatVec.size() << endl;
     }
 }
 Frame::Frame()
@@ -365,6 +414,25 @@ Frame::Frame()
  */
 void Frame::SetPose(cv::Mat Tcw)
 {
+    // KeyFrame的
+
+    // Tcw.copyTo(mTcw);
+    // cv::Mat Rcw = Tcw.rowRange(0,3).colRange(0,3);
+    // cv::Mat tcw = Tcw.rowRange(0,3).col(3);
+    // cv::Mat Rwc = Rcw.t();
+    // Ow = -Rwc*tcw;
+
+    // Twc = cv::Mat::eye(4,4,Tcw.type());
+    // Rwc.copyTo(Twc.rowRange(0,3).colRange(0,3));
+    // Ow.copyTo(Twc.rowRange(0,3).col(3));
+    // // center为相机坐标系（左目）下，立体相机中心的坐标
+    // // 立体相机中心点坐标与左目相机坐标之间只是在x轴上相差mHalfBaseline,
+    // // 因此可以看出，立体相机中两个摄像头的连线为x轴，正方向为左目相机指向右目相机
+    // cv::Mat center = (cv::Mat_<float>(4,1) << mHalfBaseline, 0 , 0, 1);
+    // // 世界坐标系下，左目相机中心到立体相机中心的向量，方向由左目相机指向立体相机中心
+    // Cw = Twc*center;
+
+    // Frame的
     mTcw = Tcw.clone();
     UpdatePoseMatrices();
 }
@@ -384,4 +452,68 @@ void Frame::UpdatePoseMatrices()
     // mtcw, 即相机坐标系下相机坐标系到世界坐标系间的向量, 向量方向由相机坐标系指向世界坐标系
     // mOw, 即世界坐标系下世界坐标系到相机坐标系间的向量, 向量方向由世界坐标系指向相机坐标系
     mOw = -mRcw.t()*mtcw;
+}
+
+void Frame::ComputeImageBounds(const cv::Mat &imLeft)
+{
+    if(mDistCoef.at<float>(0)!=0.0)
+    {
+        // 矫正前四个边界点：(0,0) (cols,0) (0,rows) (cols,rows)
+        cv::Mat mat(4,2,CV_32F);
+        mat.at<float>(0,0)=0.0;         //左上
+		mat.at<float>(0,1)=0.0;
+        mat.at<float>(1,0)=imLeft.cols; //右上
+		mat.at<float>(1,1)=0.0;
+		mat.at<float>(2,0)=0.0;         //左下
+		mat.at<float>(2,1)=imLeft.rows;
+        mat.at<float>(3,0)=imLeft.cols; //右下
+		mat.at<float>(3,1)=imLeft.rows;
+
+        // Undistort corners
+        mat=mat.reshape(2);
+        cv::undistortPoints(mat,mat,mK,mDistCoef,cv::Mat(),mK);
+        mat=mat.reshape(1);
+
+        mnMinX = min(mat.at<float>(0,0),mat.at<float>(2,0));//左上和左下横坐标最小的
+        mnMaxX = max(mat.at<float>(1,0),mat.at<float>(3,0));//右上和右下横坐标最大的
+        mnMinY = min(mat.at<float>(0,1),mat.at<float>(1,1));//左上和右上纵坐标最小的
+        mnMaxY = max(mat.at<float>(2,1),mat.at<float>(3,1));//左下和右下纵坐标最小的
+    }
+    else
+    {
+        mnMinX = 0.0f;
+        mnMaxX = imLeft.cols;
+        mnMinY = 0.0f;
+        mnMaxY = imLeft.rows;
+    }
+}
+
+void Frame::AssignFeaturesToGrid()
+{
+    int nReserve = 0.5f*N/(FRAME_GRID_COLS*FRAME_GRID_ROWS);
+    for(unsigned int i=0; i<FRAME_GRID_COLS;i++)
+        for (unsigned int j=0; j<FRAME_GRID_ROWS;j++)
+            mGrid[i][j].reserve(nReserve);
+
+    // 在mGrid中记录了各特征点
+    for(int i=0;i<N;i++)
+    {
+        const cv::KeyPoint &kp = mvKeysUn[i];
+
+        int nGridPosX, nGridPosY;
+        if(PosInGrid(kp,nGridPosX,nGridPosY))
+            mGrid[nGridPosX][nGridPosY].push_back(i);
+    }
+}
+
+bool Frame::PosInGrid(const cv::KeyPoint &kp, int &posX, int &posY)
+{
+    posX = round((kp.pt.x-mnMinX)*mfGridElementWidthInv);
+    posY = round((kp.pt.y-mnMinY)*mfGridElementHeightInv);
+
+    //Keypoint's coordinates are undistorted, which could cause to go out of the image
+    if(posX<0 || posX>=FRAME_GRID_COLS || posY<0 || posY>=FRAME_GRID_ROWS)
+        return false;
+
+    return true;
 }

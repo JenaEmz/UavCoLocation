@@ -64,6 +64,7 @@ public:
     static float cy;
     static float invfx;
     static float invfy;
+    static bool mbInitialComputations;
     cv::Mat mDistCoef;
 
     // Stereo baseline multiplied by fx.
@@ -129,9 +130,9 @@ public:
     std::vector<MapPoint*> GetMapPointMatches();
 
     // SE3 Pose and camera center
-    cv::Mat Tcw;
-    cv::Mat Twc;
-    cv::Mat Ow;
+    // cv::Mat Tcw;
+    // cv::Mat Twc;
+    // cv::Mat Ow;
 
     /***********************以下为KeyFrame专用 结束*************************/
 public:    
@@ -140,7 +141,9 @@ public:
     const cv::Mat &imRight, 
     ORBextractor *extractorLeft, 
     ORBextractor *extractorRight, 
-    cv::Mat &K, ORBVocabulary* voc, int craft_id);
+    cv::Mat &K,cv::Mat &dist, ORBVocabulary* voc,
+    float baseline, 
+    int craft_id);
 
     ~Frame()
     {
@@ -156,6 +159,10 @@ public:
     // Computes rotation, translation and camera center matrices from the camera pose.
     void UpdatePoseMatrices();
     cv::Mat UnprojectStereo(int i);
-    void ComputeBoW();
     
+    void ComputeBoW();
+    void ComputeImageBounds(const cv::Mat &imLeft);
+    void AssignFeaturesToGrid();
+    bool PosInGrid(const cv::KeyPoint &kp, int &posX, int &posY);
+
 };

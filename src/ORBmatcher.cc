@@ -57,25 +57,42 @@ int ORBmatcher::SearchByBoW(Frame* pKF,Frame &F, vector<MapPoint*> &vpMapPointMa
     DBoW2::FeatureVector::const_iterator KFend = vFeatVecKF.end();
     DBoW2::FeatureVector::const_iterator Fend = F.mFeatVec.end();
 
+    // cout << "pKF mFeatVec size: "<<pKF->mFeatVec.size() << endl;
+    // cout << "F mFeatVec size: "<<F.mFeatVec.size() << endl;
+
     while(KFit != KFend && Fit != Fend)
     {
+        // ANCHOR KFit和Fit是ok的
+        // cout << "first: " << KFit->first << " second: "<< Fit->first << endl;
         if(KFit->first == Fit->first) //步骤1：分别取出属于同一node的ORB特征点(只有属于同一node，才有可能是匹配点)
         {
+            // cout << "hello? here cannot come into?" << endl;
             const vector<unsigned int> vIndicesKF = KFit->second;
             const vector<unsigned int> vIndicesF = Fit->second;
+
+            // cout << "vIndicesKF size: " << vIndicesKF.size() << " vIndicesF size: "<< vIndicesF.size() << endl;
 
             // 步骤2：遍历KF中属于该node的特征点
             for(size_t iKF=0; iKF<vIndicesKF.size(); iKF++)
             {
                 const unsigned int realIdxKF = vIndicesKF[iKF];
-
+                // FIXME 这里的问题是vpMapPointsKF是一个空指针数组，里面的数据全部都是无效的。关键帧到底是怎么处理这些的呢？
                 MapPoint* pMP = vpMapPointsKF[realIdxKF]; // 取出KF中该特征对应的MapPoint
 
-                if(!pMP)
-                    continue;
+                // cout << "vpMapPointsKF size:" << vpMapPointsKF.size() << endl;
+                // cout << "vIndicesKF size: " << vIndicesKF.size() << endl;                
+                // cout << "realIdxKF: " << realIdxKF << endl;
 
-                if(pMP->isBad())
+                if(!pMP){
+                    // 这边一直会进去，是因为vpMapPointsKF这个向量只是reserve了这么多变量。但是里面并没有有效元素赋值。
+                    // cout << "why?" << pMP->mWorldPos << endl;
                     continue;
+                }
+                // cout << "why?" << pMP->mWorldPos << endl;
+                // if(pMP->isBad())
+                //     continue;
+                
+                // cout << "hello? here cannot come into?" << endl;
 
                 const cv::Mat &dKF= pKF->mDescriptors.row(realIdxKF); // 取出KF中该特征对应的描述子
 
@@ -152,6 +169,8 @@ int ORBmatcher::SearchByBoW(Frame* pKF,Frame &F, vector<MapPoint*> &vpMapPointMa
         }
     }
 
+    // cout << "Here is the search bow result: " << nmatches << endl;
+    
     // 根据方向剔除误匹配的点
     if(mbCheckOrientation)
     {
@@ -176,7 +195,7 @@ int ORBmatcher::SearchByBoW(Frame* pKF,Frame &F, vector<MapPoint*> &vpMapPointMa
             }
         }
     }
-    cout << "Here is the search bow result: " << nmatches << endl;
+    // cout << "Here is the search bow result: " << nmatches << endl;
     return nmatches;
 }
 

@@ -48,6 +48,10 @@ Tracking::Tracking(const cv::FileStorage& fSettings):mTrackFlag(0)
     bool bVocLoad = false; // chose loading method based on file extension
     string dictPath = fSettings["DictPath"];
     bVocLoad = mpVocabulary->loadFromTextFile(dictPath);
+
+
+    mpMap = new Map();
+
     if(!bVocLoad)
     {
         cerr << "Wrong path to vocabulary. " << endl;
@@ -55,25 +59,31 @@ Tracking::Tracking(const cv::FileStorage& fSettings):mTrackFlag(0)
         exit(-1);
     }
     cout << "Vocabulary loaded!" << endl << endl;
+
+    // 判断一个3D点远/近的阈值 mbf * 35 / fx
+    mThDepth = mbf*(float)fSettings["ThDepth"]/fx;
+    cout << endl << "Depth Threshold (Close/Far Points): " << mThDepth << endl;
 }
 
 cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,const cv::Mat &imRectRight,int id)
 {
+    float bf = mbf;
     if(id == 0)//是自己的，也就是参考帧。
     {
         mLastFrame = Frame(imRectLeft,imRectRight,
-            mpORBextractorLeft,mpORBextractorRight,mK,
-            mpVocabulary,id);
+            mpORBextractorLeft,mpORBextractorRight,mK,mDistCoef,
+            mpVocabulary,bf, id);
         mLastFrame.mbFrameValid = true;
         mTrackFlag|=0x1;
+        StereoInitialization();
         return cv::Mat();
     }
     else
     {
         // 别人的帧
         mCurrentFrame = Frame(imRectLeft,imRectRight,
-            mpORBextractorLeft,mpORBextractorRight,mK,
-            mpVocabulary, id);
+            mpORBextractorLeft,mpORBextractorRight,mK,mDistCoef,
+            mpVocabulary, bf, id);
         mCurrentFrame.mbFrameValid = true;
         mTrackFlag|=0x2;
     }
@@ -84,21 +94,22 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,const cv::Mat &imRec
         mTrackFlag=0;
         mCurrentFrame.mbFrameValid = false;
         mLastFrame.mbFrameValid = false;
+        cout << res << endl;
         return res;//此处应返回相对位置
     }else if(mTrackFlag!=0){
         // 这里初始化，因为只有一帧处理好了
         // 只有mLastFrame被使用
-        StereoInitialization();
+        // StereoInitialization();
         return cv::Mat();
     }
 }
 
 bool Tracking::TrackReferenceKeyFrame(){
 
-    cout << "************come into loop! track reference key frame**************" << endl;
+    // cout << "************come into loop! track reference key frame**************" << endl;
     // 看看描述子是个啥把
-    cout << mCurrentFrame.mDescriptors.rows << ","<< mCurrentFrame.mDescriptors.cols << endl;
-    cout << mLastFrame.mDescriptors.rows << "," << mLastFrame.mDescriptors.cols << endl;
+    // cout << mCurrentFrame.mDescriptors.rows << ","<< mCurrentFrame.mDescriptors.cols << endl;
+    // cout << mLastFrame.mDescriptors.rows << "," << mLastFrame.mDescriptors.cols << endl;
     // Compute Bag of Words vector
     // 步骤1：将当前帧的描述子转化为BoW向量
     if(mCurrentFrame.mbFrameValid)
@@ -111,7 +122,7 @@ bool Tracking::TrackReferenceKeyFrame(){
     else
         cout << "mLastFrame not valid" <<endl;
 
-    cout << "************come into loop? two frame valid?**************" << endl;
+    // cout << "************come into loop? two frame valid?**************" << endl;
     // We perform first an ORB matching with the reference keyframe
     // If enough matches are found we setup a PnP solver
     ORBmatcher matcher(0.7,true);
@@ -122,11 +133,11 @@ bool Tracking::TrackReferenceKeyFrame(){
     // 参数： 第一个是参考帧，第二个是判断的帧
     // 也就是说，第一个是自己，第二个是别人
     // 以后，自己叫做
-    cout << "************come into loop? matcher?**************" << endl;
+    // cout << "************come into loop? matcher?**************" << endl;
     int nmatches = matcher.SearchByBoW(&mLastFrame,mCurrentFrame,vpMapPointMatches);
 
-    cout << "************come into loop? search bow?**************" << endl;
-    cout << nmatches << endl;
+    // cout << "************come into loop? search bow?**************" << endl;
+    // cout << nmatches << endl;
     // if(nmatches<15)
     //    return false;
 
@@ -134,18 +145,18 @@ bool Tracking::TrackReferenceKeyFrame(){
     mCurrentFrame.mvpMapPoints = vpMapPointMatches;
     mCurrentFrame.SetPose(mLastFrame.mTcw); // 用上一次的Tcw设置初值，在PoseOptimization可以收敛快一些
 
-    cout << "************come into loop? set pose?**************" << endl;
+    // cout << "************come into loop? set pose?**************" << endl;
     // 步骤4:通过优化3D-2D的重投影误差来获得位姿
     Optimizer::PoseOptimization(&mCurrentFrame);
 
-    cout << "************come into loop? optimize?**************" << endl;
+    // cout << "************come into loop? optimize?**************" << endl;
     // Discard outliers
     // 步骤5：剔除优化后的outlier匹配点（MapPoints）
     int nmatchesMap = 0;
-    cout << "************come into loop**************" << endl;
-    cout << "feature number: "<<mCurrentFrame.N << endl;
-    cout << "mappoint number: "<<mCurrentFrame.mvpMapPoints.size() << endl;
-    cout << "outlier number: "<<mCurrentFrame.mvbOutlier.size() << endl;
+    // cout << "************come into loop**************" << endl;
+    // cout << "feature number: "<<mCurrentFrame.N << endl;
+    // cout << "mappoint number: "<<mCurrentFrame.mvpMapPoints.size() << endl;
+    // cout << "outlier number: "<<mCurrentFrame.mvbOutlier.size() << endl;
     for(int i =0; i<mCurrentFrame.N; i++)
     {
         if(mCurrentFrame.mvpMapPoints[i])
@@ -164,11 +175,12 @@ bool Tracking::TrackReferenceKeyFrame(){
                 nmatchesMap++;
         }
     }
-    cout << "**************TrackReferenceKeyFrame********************" << endl;
-    cout << nmatchesMap << endl;
-    traceMap(&mCurrentFrame);
-    cout << "***********TrackReferenceKeyFrame end*******************" << endl;
-    return nmatchesMap>=10;
+    // cout << "**************TrackReferenceKeyFrame********************" << endl;
+    // cout << nmatchesMap << endl;
+    // traceMap(&mCurrentFrame);
+    // cout << "***********TrackReferenceKeyFrame end*******************" << endl;
+    // return nmatchesMap>=10;
+    return nmatchesMap>=4;
 }
 
 void Tracking::traceMap(Frame* frame){
@@ -219,7 +231,8 @@ void Tracking::StereoInitialization()
                 // 步骤4.1：通过反投影得到该特征点的3D坐标
                 cv::Mat x3D = mLastFrame.UnprojectStereo(i);
                 // 步骤4.2：将3D点构造为MapPoint
-                MapPoint* pNewMP = new MapPoint(x3D,mpMap,&mLastFrame,mLastFrame.mnId);
+                // 最后一个参数应该是keyframe的ID，这里给个0，不然就是垃圾数据了
+                MapPoint* pNewMP = new MapPoint(x3D,mpMap,&mLastFrame,0);
 
                 // 步骤4.3：为该MapPoint添加属性：
                 // a.观测到该MapPoint的关键帧
@@ -240,6 +253,8 @@ void Tracking::StereoInitialization()
                 mpMap->AddMapPoint(pNewMP);
                 // 步骤4.5：表示该KeyFrame的哪个特征点可以观测到哪个3D点
                 mLastFrame.AddMapPoint(pNewMP,i);
+                
+                // cout << pNewMP->mWorldPos << endl;
 
                 // 步骤4.6：将该MapPoint添加到当前帧的mvpMapPoints中
                 // 为当前Frame的特征点与MapPoint之间建立索引
@@ -271,5 +286,7 @@ void Tracking::StereoInitialization()
 
         // mState=OK;
 
+    }else{
+        cout << "mLastFrame.N: " << mLastFrame.N << endl;
     }
 }
