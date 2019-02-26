@@ -1,7 +1,9 @@
 <launch>
   <arg name="config_file_location" default="$(find orb_formation)/config/stereo.yaml"/>
   <arg name="pic_file_location" default="$(find orb_formation)/pics/"/>
-  <node launch-prefix="gdb -ex run --args" pkg="orb_formation" type="orb_formation_node" name="orb_formation" output="screen">
+  <!--  launch-prefix="gdb -ex run - -args" -->
+  <node pkg="orb_formation" type="orb_formation_node" name="orb_formation" output="screen">
+  
     <param name="config_file_location" value="$(arg config_file_location)"/>
     <param name="pic_file_location" value="$(arg pic_file_location)"/>
   </node>

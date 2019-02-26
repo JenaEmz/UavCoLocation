@@ -31,10 +31,16 @@ class Tracking
     float mThDepth;
     Map* mpMap;
 
+    cv::Mat out_left_1;
+    cv::Mat out_right_1;
+    cv::Mat out_left_2;
+    cv::Mat out_right_2;
+
     ORBVocabulary* mpVocabulary;
 
   public:
     void traceMap(Frame* frame);
+    void draw_match(int num, vector<int> rot, vector<MapPoint* > mvpMapPoints);
     void StereoInitialization();
     Tracking(const cv::FileStorage& fSettings);
     cv::Mat GrabImageStereo(const cv::Mat &imRectLeft, const cv::Mat &imRectRight, int id);

@@ -2,6 +2,7 @@
 #include "Converter.h"
 #include "ORBmatcher.h"
 
+#include "string"
 
 float Frame::cx, Frame::cy;
 float Frame::fx, Frame::fy;
@@ -33,19 +34,24 @@ Frame::Frame(const cv::Mat &imLeft,
 
 
     //debug
-    if(0){
+    if(1){
         cv::Mat img, imgRight;
         imLeft.copyTo(img);
         imRight.copyTo(imgRight);
+        cv::cvtColor(img,img,cv::COLOR_GRAY2BGR);
+        cv::cvtColor(imgRight,imgRight,cv::COLOR_GRAY2BGR);
         std::for_each(mvKeys.begin(), mvKeys.end(), [&](cv::KeyPoint i) {
             cv::circle(img, i.pt, 4 * (i.octave + 1), cv::Scalar(0, 255, 0), 1);
         });
         std::for_each(mvKeysRight.begin(), mvKeysRight.end(), [&](cv::KeyPoint i) {
             cv::circle(imgRight, i.pt, 4 * (i.octave + 1), cv::Scalar(0, 255, 0), 1);
         });
-        cv::imshow("left extractor", img);
-        cv::imshow("right extractor", imgRight);
-        cv::waitKey(0);
+        // cv::imshow("left extractor", img);
+        // cv::imshow("right extractor", imgRight);
+        // cv::waitKey(0);
+
+        cv::imwrite("/home/zbf/h"+std::to_string(craft_id)+".png",img);
+        cv::imwrite("/home/zbf/h"+std::to_string(craft_id)+"2.png",imgRight);
     }
 
     //debug end

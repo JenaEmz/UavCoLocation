@@ -31,8 +31,8 @@ public:
      * @param  vpMapPointMatches F中MapPoints对应的匹配，NULL表示未匹配
      * @return                   成功匹配的数量
      */
-    int SearchByBoW(Frame *pKF, Frame &F, std::vector<MapPoint*> &vpMapPointMatches);
-    void ComputeThreeMaxima(std::vector<int>* histo, const int L, int &ind1, int &ind2, int &ind3);
+    int SearchByBoW(Frame *pKF, Frame &F, std::vector<MapPoint*> &vpMapPointMatches, vector<int>& rotHist);
+    void ComputeThreeMaxima(std::vector<std::vector<int> > histo, const int L, int &ind1, int &ind2, int &ind3);
 
 public:
     static const int TH_LOW;

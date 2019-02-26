@@ -35,7 +35,7 @@ ORBmatcher::ORBmatcher(float nnratio, bool checkOri): mfNNratio(nnratio), mbChec
  * @param  vpMapPointMatches F中MapPoints对应的匹配，NULL表示未匹配
  * @return                   成功匹配的数量
  */
-int ORBmatcher::SearchByBoW(Frame* pKF,Frame &F, vector<MapPoint*> &vpMapPointMatches)
+int ORBmatcher::SearchByBoW(Frame* pKF,Frame &F, vector<MapPoint*> &vpMapPointMatches, vector<int>&  myRot)
 {
     const vector<MapPoint*> vpMapPointsKF = pKF->GetMapPointMatches();
 
@@ -45,7 +45,9 @@ int ORBmatcher::SearchByBoW(Frame* pKF,Frame &F, vector<MapPoint*> &vpMapPointMa
 
     int nmatches=0;
 
-    vector<int> rotHist[HISTO_LENGTH];
+    // rotHist(HISTO_LENGTH,vector<int>());
+    vector<vector<int>>  rotHist = vector<vector<int>> (HISTO_LENGTH);
+    myRot = vector<int> (F.N, -1);
     for(int i=0;i<HISTO_LENGTH;i++)
         rotHist[i].reserve(500);
     const float factor = HISTO_LENGTH/360.0f;
@@ -136,6 +138,8 @@ int ORBmatcher::SearchByBoW(Frame* pKF,Frame &F, vector<MapPoint*> &vpMapPointMa
 
                         const cv::KeyPoint &kp = pKF->mvKeysUn[realIdxKF];
 
+                        myRot[bestIdxF] = realIdxKF;
+
                         if(mbCheckOrientation)
                         {
                             // trick!
@@ -199,7 +203,6 @@ int ORBmatcher::SearchByBoW(Frame* pKF,Frame &F, vector<MapPoint*> &vpMapPointMa
     return nmatches;
 }
 
-
 // Bit set count operation from
 // http://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
 int ORBmatcher::DescriptorDistance(const cv::Mat &a, const cv::Mat &b)
@@ -222,7 +225,7 @@ int ORBmatcher::DescriptorDistance(const cv::Mat &a, const cv::Mat &b)
 
 
 // 取出直方图中值最大的三个index
-void ORBmatcher::ComputeThreeMaxima(vector<int>* histo, const int L, int &ind1, int &ind2, int &ind3)
+void ORBmatcher::ComputeThreeMaxima(vector<vector<int> > histo, const int L, int &ind1, int &ind2, int &ind3)
 {
     int max1=0;
     int max2=0;

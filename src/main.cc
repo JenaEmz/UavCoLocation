@@ -74,7 +74,6 @@ int main(int argc, char **argv)
         igb.OpencvStereo_Other(left1,right1);
     }
 
-
     // 这两个完了之后才能做匹配吧
     // 匹配是靠Track这个函数来做的吧
     Tracking* tracker = coLocal.GetTracker();

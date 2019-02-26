@@ -73,6 +73,10 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,const cv::Mat &imRec
         mLastFrame = Frame(imRectLeft,imRectRight,
             mpORBextractorLeft,mpORBextractorRight,mK,mDistCoef,
             mpVocabulary,bf, id);
+        imRectLeft.copyTo(out_left_1);
+        imRectRight.copyTo(out_right_1);
+        cv::cvtColor(out_left_1,out_left_1,cv::COLOR_GRAY2BGR);
+        cv::cvtColor(out_right_1,out_right_1,cv::COLOR_GRAY2BGR);
         mLastFrame.mbFrameValid = true;
         mTrackFlag|=0x1;
         StereoInitialization();
@@ -80,6 +84,10 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft,const cv::Mat &imRec
     }
     else
     {
+        imRectLeft.copyTo(out_left_2);
+        imRectRight.copyTo(out_right_2);
+        cv::cvtColor(out_left_2,out_left_2,cv::COLOR_GRAY2BGR);
+        cv::cvtColor(out_right_2,out_right_2,cv::COLOR_GRAY2BGR);
         // 别人的帧
         mCurrentFrame = Frame(imRectLeft,imRectRight,
             mpORBextractorLeft,mpORBextractorRight,mK,mDistCoef,
@@ -134,7 +142,9 @@ bool Tracking::TrackReferenceKeyFrame(){
     // 也就是说，第一个是自己，第二个是别人
     // 以后，自己叫做
     // cout << "************come into loop? matcher?**************" << endl;
-    int nmatches = matcher.SearchByBoW(&mLastFrame,mCurrentFrame,vpMapPointMatches);
+    // 以currentFrame为基准，然后和后面的lastFrame匹配
+    vector<int> rot;
+    int nmatches = matcher.SearchByBoW(&mLastFrame,mCurrentFrame,vpMapPointMatches, rot);
 
     // cout << "************come into loop? search bow?**************" << endl;
     // cout << nmatches << endl;
@@ -142,6 +152,7 @@ bool Tracking::TrackReferenceKeyFrame(){
     //    return false;
 
     // 步骤3:将上一帧的位姿态作为当前帧位姿的初始值
+    draw_match(1,rot,vpMapPointMatches);
     mCurrentFrame.mvpMapPoints = vpMapPointMatches;
     mCurrentFrame.SetPose(mLastFrame.mTcw); // 用上一次的Tcw设置初值，在PoseOptimization可以收敛快一些
 
@@ -175,6 +186,7 @@ bool Tracking::TrackReferenceKeyFrame(){
                 nmatchesMap++;
         }
     }
+    // 在特征点上面画图
     // cout << "**************TrackReferenceKeyFrame********************" << endl;
     // cout << nmatchesMap << endl;
     // traceMap(&mCurrentFrame);
@@ -183,12 +195,55 @@ bool Tracking::TrackReferenceKeyFrame(){
     return nmatchesMap>=4;
 }
 
+void Tracking::draw_match(int num, vector<int> rot, vector<MapPoint* > mvpMapPoints){
+    // mvpMapPoints;
+    // for(int i=0;i<mvpMapPoints.size();i++){
+    //     if(mvpMapPoints[i]!=NULL){
+    //         MapPoint* MP = mvpMapPoints[i];
+    //         for(int j=0;j<mLastFrame.mvpMapPoints.size();j++){
+    //             if(MP == mLastFrame.mvpMapPoints[j]){
+    //                 // 匹配成功
+    //                 cv::circle(out_left_1, mCurrentFrame.mvKeysUn[i].pt, 4 * (mCurrentFrame.mvKeysUn[i].octave + 1), cv::Scalar(0, 255, 0), 1);
+    //                 cv::circle(out_left_2, mLastFrame.mvKeysUn[j].pt, 4 * (mLastFrame.mvKeysUn[j].octave + 1), cv::Scalar(0, 255, 0), 1);
+    //                 cout << "index: " << i <<"," << j << endl;
+    //             }
+    //         }
+    //     }
+    // }
+
+    for(int i=0;i<mvpMapPoints.size();i++){
+        if(mvpMapPoints[i]!=NULL){
+            MapPoint* MP = mvpMapPoints[i];
+            for(int j=0;j<mLastFrame.mvpMapPoints.size();j++){
+                if(MP == mLastFrame.mvpMapPoints[j]){
+                    // 匹配成功
+                    cv::circle(out_left_2, mCurrentFrame.mvKeysUn[i].pt, 4 * (mCurrentFrame.mvKeysUn[i].octave + 1), cv::Scalar(0, 255, 0), 1);
+                    cv::circle(out_left_1, mLastFrame.mvKeysUn[j].pt, 4 * (mLastFrame.mvKeysUn[j].octave + 1), cv::Scalar(0, 255, 0), 1);
+                    cout << "index: " << i <<"," << j << endl;
+                }
+            }
+        }
+    }
+
+    // std::for_each(mvpMapPoints.begin(), mvpMapPoints.end(), [&](MapPoint* i) {
+    //     if(i!=NULL)
+    //     cv::circle(out_left_1, i->pt, 4 * (i->octave + 1), cv::Scalar(0, 255, 0), 1);
+    // });
+    // std::for_each(mvpMapPoints.begin(), mvpMapPoints.end(), [&](MapPoint* i) {
+    //     if(i!=NULL)
+    //     cv::circle(out_left_2, i->pt, 4 * (i->octave + 1), cv::Scalar(0, 255, 0), 1);
+    // });
+    cv::imwrite("/home/zbf/hello.png",out_left_1);
+    cv::imwrite("/home/zbf/hello2.png",out_left_2);
+}
+
 void Tracking::traceMap(Frame* frame){
     for(auto it = frame->mvpMapPoints.begin();
         it!=frame->mvpMapPoints.end();it++){
         cout << (*it)->mWorldPos << endl;
     }
 }
+
 /**
  * @brief 双目和rgbd的地图初始化
  *
