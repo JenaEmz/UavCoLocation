@@ -1,0 +1,33 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"initializer_list": "cpp",
+			"thread": "cpp",
+			"core": "cpp",
+			"cctype": "cpp",
+			"cmath": "cpp",
+			"cstdarg": "cpp",
+			"cstddef": "cpp",
+			"cstdio": "cpp",
+			"cstdlib": "cpp",
+			"cstring": "cpp",
+			"ctime": "cpp",
+			"cwchar": "cpp",
+			"cwctype": "cpp",
+			"atomic": "cpp",
+			"strstream": "cpp",
+			"chrono": "cpp",
+			"cstdint": "cpp",
+			"iosfwd": "cpp",
+			"ratio": "cpp",
+			"cinttypes": "cpp",
+			"typeindex": "cpp",
+			"iostream": "cpp"
+		}
+	}
+}

@@ -1,0 +1,19 @@
+<launch>
+  <arg name="config_file_location" default="$(find orb_formation)/config/stereo.yaml"/>
+<<<<<<< HEAD
+  <arg name="pic_file_location" default="$(find orb_formation)"/>
+  <!--  launch-prefix="-ex run - -args" -->
+  <node pkg="orb_formation" type="orb_formation_node" name="orb_formation" output="screen" > 
+=======
+  <arg name="pic_file_location" default="$(find orb_formation)/pics/"/>
+  <!--  launch-prefix="gdb -ex run - -args" -->
+  <node pkg="orb_formation" type="orb_formation_node" name="orb_formation" output="screen">
+  
+>>>>>>> 8736e0c5a964f99dadb8fac1b24e05251a0ddfa0
+    <param name="config_file_location" value="$(arg config_file_location)"/>
+    <param name="pic_file_location" value="$(arg pic_file_location)"/>
+    <param name="left_topic" value="/cam1/camera/left/image_raw"/>
+    <param name="right_topic" value="/cam1/camera/right/image_raw"/>
+    <param name="name" value="uav1"/>
+  </node>
+</launch> 
