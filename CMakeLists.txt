@@ -137,7 +137,7 @@ include_directories(
 
 aux_source_directory("./src" DIR_SRCS)
 
-add_library(orb_colocal
+add_library(orb_colocal STATIC
   ${DIR_SRCS}
 )
 

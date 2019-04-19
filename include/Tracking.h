@@ -29,10 +29,9 @@ class Tracking
     float mThDepth;
     Map* mpMap;
 
-<<<<<<< HEAD
+
     int debug;
-=======
->>>>>>> 8736e0c5a964f99dadb8fac1b24e05251a0ddfa0
+
     cv::Mat out_left_1;
     cv::Mat out_right_1;
     cv::Mat out_left_2;

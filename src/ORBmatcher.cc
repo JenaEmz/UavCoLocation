@@ -226,7 +226,7 @@ int ORBmatcher::DescriptorDistance(const cv::Mat &a, const cv::Mat &b)
 
 // 取出直方图中值最大的三个index
 void ORBmatcher::ComputeThreeMaxima(vector<vector<int> > histo, const int L, int &ind1, int &ind2, int &ind3)
-<<<<<<< HEAD
+
 {
     int max1=0;
     int max2=0;
@@ -424,8 +424,6 @@ int ORBmatcher::SearchByProjection(Frame &CurrentFrame, const Frame &LastFrame, 
 }
 // 取出直方图中值最大的三个index
 void ORBmatcher::ComputeThreeMaxima(vector<int>* histo, const int L, int &ind1, int &ind2, int &ind3)
-=======
->>>>>>> 8736e0c5a964f99dadb8fac1b24e05251a0ddfa0
 {
     int max1=0;
     int max2=0;

@@ -121,7 +121,6 @@ int main(int argc, char **argv)
         cout << pic_path << endl;
         igb.OpencvStereo(left0,right0);
         // 读第二个飞机的图像
-<<<<<<< HEAD
         cv::Mat left1(cv::imread(pic_path+"left3.jpg", 0));
         cv::Mat right1(cv::imread(pic_path+"right3.jpg", 0));
         cv::Mat RelPose = igb.OpencvStereo_Other(left1,right1);
@@ -139,17 +138,6 @@ int main(int argc, char **argv)
     igb.OpencvStereo(left0,right0);
     ros::Publisher bitstream_pub = nh.advertise<compression::msg_features>(bitstreamTopic, 1000, true);
     igb.pubFeature(left0,right0); */
-=======
-        cv::Mat left1(cv::imread(pic_path+"left1.jpg", 0));
-        cv::Mat right1(cv::imread(pic_path+"right1.jpg", 0));
-        cout<<pic_path<<endl;
-        igb.OpencvStereo_Other(left1,right1);
-    }
-
-    // 这两个完了之后才能做匹配吧
-    // 匹配是靠Track这个函数来做的吧
-    Tracking* tracker = coLocal.GetTracker();
->>>>>>> 8736e0c5a964f99dadb8fac1b24e05251a0ddfa0
 
     while(1)
     {

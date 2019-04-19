@@ -32,11 +32,7 @@ Frame::Frame(const cv::Mat &imLeft,
     threadRight.join();
 
     //debug
-<<<<<<< HEAD
     /*if(1){
-=======
-    if(1){
->>>>>>> 8736e0c5a964f99dadb8fac1b24e05251a0ddfa0
         cv::Mat img, imgRight;
         imLeft.copyTo(img);
         imRight.copyTo(imgRight);
@@ -54,11 +50,7 @@ Frame::Frame(const cv::Mat &imLeft,
 
         cv::imwrite("/home/zbf/h"+std::to_string(craft_id)+".png",img);
         cv::imwrite("/home/zbf/h"+std::to_string(craft_id)+"2.png",imgRight);
-<<<<<<< HEAD
     }*/
-=======
-    }
->>>>>>> 8736e0c5a964f99dadb8fac1b24e05251a0ddfa0
 
     //debug end
     N = mvKeys.size();
